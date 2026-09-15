@@ -1,0 +1,10 @@
+[project]
+name = "oxzoo-worker-python"
+version = "0.1.0"
+description = "Minimal Python background worker example for the ox control plane: prints the greeting line to stdout every 10 seconds."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false

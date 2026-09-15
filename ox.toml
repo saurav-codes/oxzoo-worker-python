@@ -1,0 +1,19 @@
+# ox deploy manifest for oxzoo-worker-python: an internal worker with no web
+# surface. ox runs it as a systemd service with Restart=always; output is
+# verified through journalctl, and GREETING_TAG arrives as runtime env.
+
+name = "oxzoo-worker-python"
+branch = "main"
+runtime = "python"
+framework = "generic"
+package_manager = "uv"
+port = 9118
+environment_file = "/etc/ox/apps/oxzoo-worker-python.env"
+
+[[processes]]
+name = "worker"
+command = "uv run python worker.py"
+restart_policy = "always"
+
+[deploy]
+install = ["uv sync --frozen"]
