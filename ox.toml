@@ -7,7 +7,7 @@ branch = "main"
 runtime = "python"
 framework = "generic"
 package_manager = "uv"
-port = 9118
+port = 9122
 environment_file = "/etc/ox/projects/oxzoo-worker-python.env"
 
 [[processes]]
