@@ -15,11 +15,11 @@ An official ox deploy example: a minimal Python 3.13 background worker managed b
 
 One variable, runtime only:
 
-**`GREETING_TAG`**: ox injects the project env file (`/etc/ox/apps/oxzoo-worker-python.env`, edited in the ox Environment editor) into the process environment. `worker.py` reads `GREETING_TAG` from `os.environ` at startup and refuses to start without it: a missing or empty value prints a clear error to stderr and exits nonzero, so systemd's `Restart=always` keeps retrying and the journal shows the failure loudly. With the value present, the worker prints `hello world oxzoo-worker-python_<GREETING_TAG>` to stdout once every 10 seconds, forever, starting immediately (the first print comes before the first sleep). `.env.example` documents the variable with a placeholder; real values live in the ox dashboard, never in git.
+**`GREETING_TAG`**: ox injects the project env file (`/srv/ox/oxzoo-worker-python/env`, 0600 root-owned, edited in the ox Environment editor) into the process environment. `worker.py` reads `GREETING_TAG` from `os.environ` at startup and refuses to start without it: a missing or empty value prints a clear error to stderr and exits nonzero, so systemd's `Restart=always` keeps retrying and the journal shows the failure loudly. With the value present, the worker prints `hello world oxzoo-worker-python_<GREETING_TAG>` to stdout once every 10 seconds, forever, starting immediately (the first print comes before the first sleep). `.env.example` documents the variable with a placeholder; real values live in the ox dashboard, never in git.
 
 ## Deploy with ox
 
-1. Add the repo in the ox dashboard: paste the clone URL `https://github.com/saurav-codes/oxzoo-worker-python`.
+1. Add the repo in the ox dashboard: paste the clone URL `git@github.com:saurav-codes/oxzoo-worker-python`.
 2. In the Environment editor, set `GREETING_TAG=w3-04`.
 3. Press **Deploy**; no domain is needed. ox runs `uv sync --frozen` as the install hook in the release worktree, then starts the `worker` process as a systemd service with `Restart=always`.
 
