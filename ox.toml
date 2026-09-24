@@ -1,6 +1,8 @@
 # ox deploy manifest for oxzoo-worker-python: an internal worker with no web
-# surface. ox runs it as a systemd service with Restart=always; output is
-# verified through journalctl, and GREETING_TAG arrives as runtime env.
+# surface. It consumes the project's Redis queue and records each completed
+# job in Postgres; both services come from the catalog below. ox runs the
+# worker as a systemd service with Restart=always; output is verified through
+# journalctl.
 
 name = "oxzoo-worker-python"
 branch = "main"
@@ -8,9 +10,20 @@ runtime = "python"
 package_manager = "uv"
 port = 9122
 
+# Host-shared redis: REDIS_URL carries this project's own index, so the job
+# queue never collides with other projects.
+[[services]]
+id = "redis@7"
+
+# Host-shared postgres: DATABASE_URL names this project's own database, where
+# completed jobs land.
+[[services]]
+id = "postgres@17"
+
 [[processes]]
 name = "worker"
 command = "uv run python worker.py"
+depends_on = ["redis", "postgres"]
 restart_policy = "always"
 
 [deploy]
