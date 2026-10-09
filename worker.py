@@ -1,11 +1,10 @@
 """oxzoo worker: consumes jobs from the project's Redis queue and records
 each completed job in Postgres.
 
-An internal worker with no HTTP surface. ox runs it as a systemd service
-with Restart=always and its output is verified through journalctl.
-DATABASE_URL and REDIS_URL arrive as runtime env from the services ox
-autowires (postgres@17 and redis@7 in ox.toml); the worker refuses to
-start without either.
+An internal worker with no HTTP surface. ox runs it as a systemd worker
+that restarts if it exits, and its lines show in ox logs. DATABASE_URL and
+REDIS_URL come from the postgres and redis services in ox.toml; the worker
+refuses to start without either.
 """
 
 import os
@@ -14,8 +13,7 @@ import sys
 import psycopg
 import redis
 
-# Project-scoped queue name; the per-project index ox puts in REDIS_URL
-# scopes it further, so several workers can share one Redis safely.
+# Project-scoped queue name. ox gives this project its own Redis instance.
 QUEUE = "oxzoo-worker-python:jobs"
 
 # Created idempotently at startup so a fresh deploy needs no migrate step.
@@ -50,7 +48,7 @@ def main() -> int:
         return 1
 
     # autocommit: each completed job is its own INSERT, visible to readers
-    # (the Django apps share this database) as soon as it lands.
+    # as soon as it lands.
     conn = psycopg.connect(database_url, autocommit=True)
     conn.execute(CREATE_TABLE)
     client = redis.Redis.from_url(redis_url)

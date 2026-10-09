@@ -1,30 +1,11 @@
-# ox deploy manifest for oxzoo-worker-python: an internal worker with no web
-# surface. It consumes the project's Redis queue and records each completed
-# job in Postgres; both services come from the catalog below. ox runs the
-# worker as a systemd service with Restart=always; output is verified through
-# journalctl.
+# A Python worker on a Redis queue that records each job in Postgres: no web process.
 
-name = "oxzoo-worker-python"
-branch = "main"
-runtime = "python"
-package_manager = "uv"
-port = 9122
+[app]
+enabled = false
 
-# Host-shared redis: REDIS_URL carries this project's own index, so the job
-# queue never collides with other projects.
-[[services]]
-id = "redis@7"
+[workers]
+worker = "uv run python worker.py"
 
-# Host-shared postgres: DATABASE_URL names this project's own database, where
-# completed jobs land.
-[[services]]
-id = "postgres@17"
-
-[[processes]]
-name = "worker"
-command = "uv run python worker.py"
-depends_on = ["redis", "postgres"]
-restart_policy = "always"
-
-[deploy]
-install = ["uv sync --frozen"]
+[services]
+postgres = {}
+redis    = {}

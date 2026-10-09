@@ -1,63 +1,84 @@
 # oxzoo-worker-python
 
-Deployed with [ox](https://deploywithox.com): deploy a repo to your own server with one command, no Docker. [Docs](https://deploywithox.com/docs) · [Stack guides](https://deploywithox.com/docs/guides)
+Deployed with [ox](https://deploywithox.com): deploy a repo to your own server with one command, no Docker. [Docs](https://deploywithox.com/docs) · [Guide for Python](https://deploywithox.com/docs/guides/fastapi)
 
-An official ox deploy example: a Python 3.13 background worker managed by uv, deployed to a single Ubuntu VPS by the [ox](https://deploywithox.com) control plane from one `ox.toml` manifest at the repo root. The worker consumes jobs from the project's Redis queue (BRPOP on `oxzoo-worker-python:jobs`) and writes one row per completed job to Postgres — a genuine interdependent pair with no web surface. This is an internal worker: no domain, no HTTP server, no readiness probe. ox runs it as a systemd service with `Restart=always` and its output is verified through `journalctl`; the journal is the product. The manifest still declares `port = 9122` because ox requires a project port even for non-listening workers; nothing binds to it.
+An [ox](https://deploywithox.com) deploy example: a Python 3.13 worker that consumes jobs from a Redis queue and records each completed job in Postgres, deployed to your own Ubuntu server. There is no domain and no HTTP server. ox installs Python and uv, runs `uv sync`, gives the project Postgres and Redis, and runs the worker under systemd, restarting it if it exits.
 
 ## Stack
 
 | Component | Version | Purpose |
 |---|---|---|
-| Runtime | Python 3.13 | runs `worker.py`, pops the queue, writes rows |
-| Queue | redis 6.4 (client) | BRPOP `oxzoo-worker-python:jobs`; the server comes from the host-shared `redis@7` catalog service |
-| Database | psycopg 3.3 (binary) | one INSERT per completed job into `completed_jobs`; the server comes from the host-shared `postgres@17` catalog service |
-| Package manager | uv 0.11.32 | lockfile (`uv.lock`) is committed; `uv sync --frozen` is the install hook |
-| Deploy | ox | `ox.toml` defines the `worker` process as a systemd service with `Restart=always` |
+| Worker | Python 3.13 (`.python-version`), uv | `worker.py`, a `BRPOP` loop |
+| Clients | psycopg 3.3, redis-py 6.4 | pinned in `pyproject.toml` and `uv.lock` |
+| Services | PostgreSQL 18, Redis 8 | provided by ox from `[services]` |
+
+## ox.toml
+
+```toml
+# A Python worker on a Redis queue that records each job in Postgres: no web process.
+
+[app]
+enabled = false
+
+[workers]
+worker = "uv run python worker.py"
+
+[services]
+postgres = {}
+redis    = {}
+```
+
+`[app] enabled = false` says the project has no web process, so ox adds none and asks for no domain. ox detects `uv sync --frozen --no-dev` from `uv.lock`.
 
 ## Environment flow
 
-Two variables, runtime only, both autowired by the catalog services in `ox.toml`:
-
-**`REDIS_URL`**: the `redis@7` service fills it with the project's own database index, so the queue never collides with other projects.
-
-**`DATABASE_URL`**: the `postgres@17` service fills it; the env's database is named after the project.
-
-`worker.py` reads each from `os.environ` at startup and refuses to start without either: a missing or empty value prints a clear error to stderr and exits nonzero, so systemd's `Restart=always` keeps retrying and the journal shows the failure loudly. With both present, the worker creates `completed_jobs` idempotently, BRPOPs `oxzoo-worker-python:jobs`, and for each job inserts one row then prints `completed job from <queue>: <payload>`, forever. `.env.example` documents both variables as blank placeholders (ox fills them); real values live in the ox dashboard, never in git.
+ox provides `DATABASE_URL` and `REDIS_URL` from `[services]`; there is nothing for you to set. `worker.py` refuses to start without either, and creates its `completed_jobs` table on startup, so a fresh deploy needs no migrate step.
 
 ## Deploy with ox
 
-1. Add the repo in the ox dashboard: paste the clone URL `git@github.com:saurav-codes/oxzoo-worker-python`.
-2. No environment variables are needed: the two catalog services autowire `REDIS_URL` and `DATABASE_URL`.
-3. Press **Deploy**; no domain is needed. ox runs `uv sync --frozen` as the install hook in the release worktree, then starts the `worker` process as a systemd service with `Restart=always`.
+```sh
+curl -fsSL https://deploywithox.com/install.sh | sh
+ox login
+ox new https://github.com/saurav-codes/oxzoo-worker-python
+ox review oxzoo-worker-python --wait
+```
+
+The plan, offline:
+
+```console
+$ ox check .
+ox check . (manifest: ox.toml)
+
+  build.install              uv sync --frozen --no-dev                            detected:uv.lock
+  workers.worker             uv run python worker.py                              declared
+  tools.python               3.13                                                 detected:.python-version
+  tools.uv                   0.11                                                 default
+  services.postgres          postgres 18 (shared)                                 default
+  services.redis             redis 8 (only for this project)                      default
+
+  Provided by ox: PORT, HOST, OX_ENV, OX_PROJECT, OX_RELEASE, OX_DATA_DIR, DATABASE_URL, REDIS_URL
+
+Ready to deploy.
+```
 
 ## Expected output
 
-There is no URL to visit; the journal is the product. Tail the unit:
-
-```bash
-journalctl -u ox-oxzoo-worker-python-worker.service -f
+```sh
+ox logs oxzoo-worker-python --follow
 ```
 
-It shows the startup line, then one completion line per job pushed onto the queue:
+shows `watching queue oxzoo-worker-python:jobs`, then one line per job pushed onto the queue:
 
 ```
-watching queue oxzoo-worker-python:jobs
 completed job from oxzoo-worker-python:jobs: hello
 ```
 
-Push a test job from the host (the index in the project's `REDIS_URL` is the one the worker pops):
-
-```bash
-redis-cli LPUSH oxzoo-worker-python:jobs hello
-```
-
-The unit name follows ox's `ox-<project>-<process>.service` scheme: project `oxzoo-worker-python` plus process `worker` gives `ox-oxzoo-worker-python-worker.service`. If `REDIS_URL` or `DATABASE_URL` is missing or empty, the same journal shows the stderr error and the service restarting under `Restart=always`.
+To push a test job, run `redis-cli -u "$REDIS_URL" LPUSH oxzoo-worker-python:jobs hello` on the server, with the URL from `ox vars oxzoo-worker-python --reveal`. `ox explore oxzoo-worker-python postgres table completed_jobs` then shows the row.
 
 ## Local development
 
-```bash
+```sh
 uv sync
-REDIS_URL=redis://127.0.0.1:6379/0 DATABASE_URL=postgres://localhost/ uv run python worker.py
+DATABASE_URL=postgresql://localhost/oxzoo_worker REDIS_URL=redis://localhost:6379/0 uv run python worker.py
+redis-cli LPUSH oxzoo-worker-python:jobs hello
 ```
-
-Push jobs with `redis-cli LPUSH oxzoo-worker-python:jobs hello` and watch the table grow (`SELECT count(*) FROM completed_jobs;`). Stop with Ctrl-C. `worker.py` passes `flush=True` on every print even though ox sets `PYTHONUNBUFFERED=1`, so lines appear immediately when piping output locally too. Pass env inline per the command above; never commit a real `.env`.
