@@ -1,6 +1,8 @@
 # oxzoo-worker-python
 
-An official ox deploy example: a Python 3.13 background worker managed by uv, deployed to a single Ubuntu VPS by the [ox](https://github.com/saurav-codes/vps-ctl) control plane from one `ox.toml` manifest at the repo root. The worker consumes jobs from the project's Redis queue (BRPOP on `oxzoo-worker-python:jobs`) and writes one row per completed job to Postgres — a genuine interdependent pair with no web surface. This is an internal worker: no domain, no HTTP server, no readiness probe. ox runs it as a systemd service with `Restart=always` and its output is verified through `journalctl`; the journal is the product. The manifest still declares `port = 9122` because ox requires a project port even for non-listening workers; nothing binds to it.
+Deployed with [ox](https://deploywithox.com): deploy a repo to your own server with one command, no Docker. [Docs](https://deploywithox.com/docs) · [Stack guides](https://deploywithox.com/docs/guides)
+
+An official ox deploy example: a Python 3.13 background worker managed by uv, deployed to a single Ubuntu VPS by the [ox](https://deploywithox.com) control plane from one `ox.toml` manifest at the repo root. The worker consumes jobs from the project's Redis queue (BRPOP on `oxzoo-worker-python:jobs`) and writes one row per completed job to Postgres — a genuine interdependent pair with no web surface. This is an internal worker: no domain, no HTTP server, no readiness probe. ox runs it as a systemd service with `Restart=always` and its output is verified through `journalctl`; the journal is the product. The manifest still declares `port = 9122` because ox requires a project port even for non-listening workers; nothing binds to it.
 
 ## Stack
 
